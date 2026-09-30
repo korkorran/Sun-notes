@@ -25,6 +25,12 @@ précis rencontré en chemin.
 - **[ctypes.md](./ctypes.md)** — les autres façons de lier du C depuis OCaml, et
   pourquoi le stub manuel a été retenu ici.
 
+## Empaqueter
+
+- **[packaging.md](./packaging.md)** — comment le `.deb` et le `.rpm` résolvent
+  le même problème, ce que sont un ELF et un soname, et pourquoi l'un traduit
+  ses dépendances à la construction quand l'autre laisse dnf conclure.
+
 ## L'écosystème Linux
 
 - **[pkg-config.md](./pkg-config.md)** — comment les chemins et bibliothèques
@@ -39,5 +45,6 @@ précis rencontré en chemin.
 
 ---
 
-L'empaquetage et la distribution sont traités à part, dans
+L'usage des scripts d'empaquetage — options, prérequis, intégration continue —
+est documenté à part, dans
 [`packaging/README.md`](../../packaging/README.md).
