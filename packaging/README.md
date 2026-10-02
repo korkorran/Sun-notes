@@ -15,26 +15,57 @@ check it, and publishes it to the GitHub release.
 
 ## How publishing works
 
-**Pushing to the `releases` branch is what publishes.** Nothing else starts
-those workflows: not a push to `main`, not a pull request, not a tag on its
-own. To cut a release:
+**A tagged commit on `main` or `releases` is what publishes.** Two conditions,
+both required. To cut a release:
 
 ```sh
 git tag 0.2.0
-git push origin 0.2.0         # the tag has to reach the remote
-git push origin HEAD:releases # this is what triggers the three workflows
+git push origin 0.2.0    # the tag first: it must be on the remote
+git push origin main     # this is what triggers the three workflows
 ```
 
-The commit that lands on `releases` **must carry a tag**, and that tag names
-the release. If no tag points at that exact commit the run stops with an error
-rather than publish — a release labelled `0.2.0` but built from something that
-is not `0.2.0` cannot be taken back once people have downloaded it. Pushing
-the same tag to `releases` again replaces that release's files.
+**Push the tag before the branch.** The checkout has to find the tag on the
+remote; a branch pushed first simply runs and skips.
 
-Note the consequence of `releases` being the only trigger: a packaging
-regression is discovered when you try to publish, not before. If that becomes
-annoying, the fix is a build-only run on `main` — the same jobs minus
-`release`.
+That tag names the release. A release labelled `0.2.0` but built from
+something that is not `0.2.0` cannot be taken back once people have downloaded
+it, which is why the match has to be exact rather than nearest. Re-pushing the
+same tag replaces that release's files.
+
+The two conditions are enforced in two different places, because GitHub cannot
+express "only when the commit carries a tag" as a trigger filter:
+
+| Condition | Enforced by | A push that fails it |
+|---|---|---|
+| on `main` or `releases` | the `branches:` filter | does not start the workflow |
+| the commit carries a tag | the `version` job | starts it, then skips every job |
+
+So ordinary work on `main` leaves a **green** run with its jobs greyed out —
+not a red cross — and spends no runner minutes. Work on any other branch
+starts nothing at all.
+
+## Building without publishing
+
+Each workflow also accepts a **manual run** (*Run workflow* in the Actions tab,
+or `gh workflow run deb.yml`). A manual run builds and checks, and never
+publishes: the `release` job is conditioned on `github.event_name == 'push'`.
+
+An untagged commit is no obstacle there — the `version` job gives it a
+throwaway `0.0.0+dev.<sha>`, which is a valid version for all three formats.
+You can also pick an existing tag rather than a branch in the Actions UI, in
+which case the real version is used.
+
+What it produces lands as a **run artifact**, at the bottom of the run page or
+through the CLI:
+
+```sh
+gh run download <run-id> -n sun-notes-windows-x64
+```
+
+GitHub zips artifacts, so you get a `.zip` to unpack, and they are kept for 14
+days. This is the way to check a packaging change — the `verify` jobs run in
+full, including the Windows launch with `PATH` stripped to the system
+directories — without putting a release out.
 
 Both Linux workflows build **two architectures** — `amd64`/`arm64` for the
 `.deb`, `x86_64`/`aarch64` for the `.rpm` — from a matrix whose arm64 leg runs

@@ -1,11 +1,23 @@
 # Builds the Windows installer and publishes it to the GitHub release.
 #
-# Pushing to the releases branch is what publishes. Nothing else starts this
-# workflow: not a push to main, not a pull request, not a tag on its own. The
-# commit pushed to releases must carry a tag, and that tag names the release —
-# the run fails outright if no tag points at it, rather than publish a version
-# number that does not match its contents. Pushing the same tag again replaces
-# that release's files.
+# A tagged commit on main or releases is what publishes. Two conditions,
+# enforced in two different places: the branch by the trigger filter below, the
+# tag by the version job — GitHub cannot express "only when the commit carries
+# a tag" as a filter.
+#
+# A push to main or releases without a tag on it is *skipped*, not failed:
+# ordinary work leaves a green run with its jobs greyed out rather than a red
+# cross, and no runner minutes are spent. A push to any other branch does not
+# start this workflow at all.
+#
+# Push the tag before the branch — the tag has to be on the remote for the
+# checkout to find it. Re-pushing the same tag replaces that release's files.
+#
+# A manual run (workflow_dispatch) is the way to exercise all of this without
+# publishing anything: the release job is barred from it, and an untagged
+# commit is given a throwaway 0.0.0+dev.<sha> version so the package still has
+# a valid name. What it produces lands as a run artifact — downloadable from
+# the run page, or with `gh run download <run-id>`.
 #
 # One of three package workflows, alongside deb.yml and rpm.yml. They publish
 # independently: each attaches its own file to the release as soon as it is
@@ -22,10 +34,13 @@
 name: Windows installer
 
 on:
-  # Nothing else starts these: pushing to releases is the act of publishing.
+  # These two branches only. The tag on the commit is the second condition,
+  # checked by the version job — see the note at the top.
   push:
-    branches: [releases]
-
+    branches: [main, releases]
+  # A manual run builds and checks without publishing — see the note at the
+  # top. Pick a branch or an existing tag in the Actions UI.
+  workflow_dispatch:
 concurrency:
   # Never cancel-in-progress here: every run publishes, and killing one
   # mid-upload would leave the release half-populated.
@@ -33,12 +48,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    outputs:
+      # `tagged` is the verdict every other job waits on.
+      tagged: ${{ steps.version.outputs.tagged }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ needs.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the step below needs to know whether a tag
+          # points at this exact commit, which a shallow clone cannot answer.
+          fetch-depth: 0
+
+      - name: Work out the version from the tag
+        id: version
+        run: |
+          # The release is named after the tag on this very commit — not the
+          # nearest reachable one. A release labelled 0.1.0 but built from a
+          # commit that is not 0.1.0 cannot be taken back once people have
+          # downloaded it.
+          #
+          # No tag at all is not an error, it is an ordinary push: say so and
+          # let the jobs downstream skip.
+          if tag="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag points at this commit — publishing version ${tag#v}."
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            # A manual run exists to exercise the build, and the release job is
+            # barred from it, so an untagged commit is no obstacle. The version
+            # only has to be one the packaging accepts: it must start with a
+            # digit, and carry no character Debian or RPM reject.
+            version="0.0.0+dev.$(git rev-parse --short HEAD)"
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "::notice::Manual run, no tag on this commit — building $version. Nothing will be published."
+          else
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No tag points at $(git rev-parse --short HEAD); nothing to publish. Tag the commit, push the tag, then push the branch again."
+          fi
+
   build-windows:
     name: Build installer (x64)
+    needs: version
+    if: needs.version.outputs.tagged == 'true'
     runs-on: windows-latest
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
-      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,22 +105,6 @@ jobs:
           # Full history and tags: the version step needs to know whether a tag
           # points at this exact commit, which a shallow clone cannot answer.
           fetch-depth: 0
-
-      - name: Work out the version from the tag
-        id: version
-        shell: bash
-        run: |
-          # The release is named after the tag on this very commit — not the
-          # nearest reachable one. A release labelled 0.1.0 but built from a
-          # commit that is not 0.1.0 cannot be taken back once people have
-          # downloaded it, so an inexact match stops the run instead.
-          if ! tag="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
-            echo "::error::No tag points at $(git rev-parse --short HEAD). Tag the commit you want to publish and push the tag (git push origin <tag>) before pushing it to releases."
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-          echo "Publishing $tag as version ${tag#v}"
 
       - name: Install Inno Setup
         # upgrade rather than install: the runner image ships an Inno Setup of
@@ -144,7 +187,7 @@ jobs:
           }
 
       - name: Build the installer
-        run: opam exec -- pwsh -File .\packaging\make-installer.ps1 -Release -Version '${{ steps.version.outputs.version }}'
+        run: opam exec -- pwsh -File .\packaging\make-installer.ps1 -Release -Version '${{ needs.version.outputs.version }}'
 
       - uses: actions/upload-artifact@v4
         with:
@@ -228,7 +271,9 @@ jobs:
 
   release:
     name: Attach to the release
-    needs: [build-windows, verify-windows]
+    # Never on a manual run: those are for checking, not publishing.
+    if: github.event_name == 'push'
+    needs: [version, build-windows, verify-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -248,11 +293,11 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          # On a branch push github.ref is refs/heads/releases, which is not a
-          # tag, so the action would have nothing to attach to. The tag comes
-          # from the build job — the one that has the repository checked out.
-          tag_name: ${{ needs.build-windows.outputs.tag }}
+          # On a branch push github.ref is refs/heads/<branch>, never a tag,
+          # so the action would have nothing to attach to. The tag comes from
+          # the version job.
+          tag_name: ${{ needs.version.outputs.tag }}
           files: dist/*.exe
           fail_on_unmatched_files: true
-          # Pushing the same tag to releases again replaces that release's files.
+          # Re-pushing the same tag replaces that release's files.
           overwrite_files: true
