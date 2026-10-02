@@ -3,7 +3,11 @@
  ; lwt.unix brings Lwt together with Lwt_unix, Lwt_io and Lwt_preemptive;
  ; threads.posix is what lets the Lwt event loop have a thread of its own,
  ; since the webview keeps the process's main thread.
- (libraries owebview unix lwt.unix threads.posix))
+ ;
+ ; owebview.desktop is the companion library for what a native application
+ ; needs beyond the web view itself; Locate_assets is what tells the binary
+ ; where its web/ directory is.
+ (libraries owebview owebview.desktop unix lwt.unix threads.posix))
 
 ; Stage the web/ assets next to the built binary (_build/.../examples/web/) so
 ; the example is self-contained in the build tree — without installing them

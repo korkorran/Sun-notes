@@ -48,3 +48,20 @@ build: [
 ]
 dev-repo: "git+https://github.com/korkorran/Sun-notes.git"
 x-maintenance-intent: ["(latest)"]
+# dune cannot express pin-depends from dune-project, so it lives here; dune
+# merges this template into the generated sun-notes.opam.
+#
+# owebview is taken from its git repository rather than from the opam
+# repository: the published 0.1.0 predates fixes this application needs — among
+# them the CAMLdrop ordering in the binding trampolines, without which any
+# binding call corrupts the GC's root chain and the process dies on a later
+# collection.
+#
+# Remove this block once a release carrying those fixes is on opam, and let the
+# (owebview (>= ...)) constraint in dune-project do the work on its own.
+pin-depends: [
+  [
+    "owebview.0.1.0"
+    "git+https://github.com/korkorran/Owebview.git#main"
+  ]
+]

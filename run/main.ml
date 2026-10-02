@@ -24,7 +24,9 @@ let () =
      The CSS and JS referenced with relative paths in index.html are resolved
      relative to that file. We locate the web/ directory from the executable
      location, so it works both installed and from the build tree. *)
-  let index = Filename.concat (Webview.Utils.web_dir ()) "index.html" in
+  let index =
+    Filename.concat (Webview_desktop.Locate_assets.web_dir ()) "index.html"
+  in
   Webview.navigate w ("file://" ^ index);
 
   (* The two event loops get a thread each, and the assignment is not

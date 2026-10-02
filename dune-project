@@ -26,6 +26,8 @@
   ; to read and write files.
   (ocaml
    (>= 4.14))
+  ; Taken from git rather than from the opam repository — see the
+  ; pin-depends block in sun-notes.opam.template, which says why.
   (owebview
    (>= 0.1.0))
   ; The page: brr for the bridge to the bindings, vdom for the DOM.
