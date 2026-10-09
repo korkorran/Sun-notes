@@ -61,6 +61,7 @@ jobs:
       tagged: ${{ steps.version.outputs.tagged }}
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +84,18 @@ jobs:
             echo "tagged=true" >> "$GITHUB_OUTPUT"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
             echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-            echo "::notice::$tag points at this commit — publishing version ${tag#v}."
+            # A tilde or a hyphen in the version means a pre-release, and not
+            # merely by convention: both Debian and RPM sort a tilde *before*
+            # the version it qualifies, so 0.2.0~alpha precedes 0.2.0. Marking
+            # the GitHub release to match keeps the badge and the package
+            # metadata telling the same story.
+            case "$tag" in
+              *[-~]*) prerelease=true ;;
+              *) prerelease=false ;;
+            esac
+            echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag points at this commit — publishing version ${tag#v} (prerelease: $prerelease)."
+
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             # A manual run exists to exercise the build, and the release job is
             # barred from it, so an untagged commit is no obstacle. The version
@@ -92,6 +104,10 @@ jobs:
             version="0.0.0+dev.$(git rev-parse --short HEAD)"
             echo "tagged=true" >> "$GITHUB_OUTPUT"
             echo "version=$version" >> "$GITHUB_OUTPUT"
+            # Unused — the release job never runs on a manual one — but a dev
+            # build is no final release, and leaving it unset would be a lie
+            # waiting for the day something reads it.
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Manual run, no tag on this commit — building $version. Nothing will be published."
           else
             echo "tagged=false" >> "$GITHUB_OUTPUT"
@@ -355,5 +371,8 @@ jobs:
           tag_name: ${{ needs.version.outputs.tag }}
           files: dist/*.rpm
           fail_on_unmatched_files: true
+          # Set from the tag by the version job: a badge that contradicted the
+          # package version would be worse than none.
+          prerelease: ${{ needs.version.outputs.prerelease }}
           # Re-pushing the same tag replaces that release's files.
           overwrite_files: true

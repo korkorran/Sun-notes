@@ -32,6 +32,19 @@ something that is not `0.2.0` cannot be taken back once people have downloaded
 it, which is why the match has to be exact rather than nearest. Re-pushing the
 same tag replaces that release's files.
 
+**Pre-releases.** A tag carrying a tilde or a hyphen — `0.2.0~alpha` — marks
+the GitHub release as a pre-release. The `version` job derives the flag from
+the tag so the badge and the package metadata cannot disagree.
+
+Prefer the tilde to the hyphen. It is legal in both Debian and RPM versions,
+and both sort it **before** the version it qualifies, so `0.2.0~alpha`
+precedes `0.2.0` — which is what a pre-release means. A hyphen is worse than
+cosmetic: RPM forbids it outright (`make-rpm.sh` rewrites it to a dot, so the
+package version stops matching the tag), and in Debian it separates the
+upstream version from a package revision, which turns the `.deb` into a
+non-native package while the script still ships a native package's
+`changelog.gz`.
+
 The two conditions are enforced in two different places, because GitHub cannot
 express "only when the commit carries a tag" as a trigger filter:
 
