@@ -94,18 +94,28 @@ jobs:
           if tag="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
             echo "tagged=true" >> "$GITHUB_OUTPUT"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
-            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-            # A tilde or a hyphen in the version means a pre-release, and not
-            # merely by convention: both Debian and RPM sort a tilde *before*
-            # the version it qualifies, so 0.2.0~alpha precedes 0.2.0. Marking
-            # the GitHub release to match keeps the badge and the package
-            # metadata telling the same story.
+            # The tag and the package version are spelled differently on
+            # purpose, and neither spelling is free.
+            #
+            # Git refuses a tilde in a ref name — it is a revision operator,
+            # as in HEAD~1 — so a pre-release tag has to use a hyphen.
+            # Debian and RPM then read that hyphen as something else entirely:
+            # in Debian it separates an upstream version from a package
+            # revision, and RPM forbids it outright. What both of them do read
+            # as "comes before" is a tilde, so 0.2.0~alpha precedes 0.2.0 —
+            # exactly what a pre-release is.
+            #
+            # Hence: the tag keeps the hyphen git allows, and the version the
+            # packages carry gets the tilde they understand.
+            version="$(printf '%s' "${tag#v}" | tr '-' '~')"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            # Either spelling marks a pre-release; the tag can only hold one.
             case "$tag" in
               *[-~]*) prerelease=true ;;
               *) prerelease=false ;;
             esac
             echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-            echo "::notice::$tag points at this commit — publishing version ${tag#v} (prerelease: $prerelease)."
+            echo "::notice::$tag points at this commit — publishing version $version (prerelease: $prerelease)."
 
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             # A manual run exists to exercise the build, and the release job is
