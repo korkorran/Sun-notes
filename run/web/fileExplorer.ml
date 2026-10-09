@@ -116,6 +116,9 @@ let init =
     can say so while it waits. *)
 let is_reading model = model.reading
 
+(** The folder button's message, for the native menu bar to borrow. *)
+let pick_folder_msg = Pick_folder
+
 (** Decode one [read_dir] answer: an array of {"name", "path", "kind"}. *)
 let decode_entries listing =
   Jv.to_list

@@ -64,6 +64,52 @@ let view { explorer; editor } =
 
 let app = Vdom.app ~init ~update ~view ()
 
+(* What the native menu bar asks the page to do; see run/main.ml for the bar
+   itself.
+
+   The two file actions are messages, borrowed from the panes that own them —
+   a menu item cannot build a private message, so each pane exposes the one it
+   is willing to share.
+
+   The three edit actions are not messages at all. They go to the browser's
+   own editing commands, which act on whichever text field has the focus, and
+   the edit they make fires that field's input event — so the model is brought
+   up to date by the path that already exists for typing. Doing it through the
+   model instead would mean reading the selection out of the DOM and handing it
+   back, for no gain.
+
+   Paste is the exception a browser forces: execCommand("paste") is refused to
+   page script, so the clipboard is read here and the text inserted as if it
+   had been typed. insertText fires the same input event. *)
+let exec_command cmd arg =
+  ignore
+    (Jv.call
+       (Jv.get Jv.global "document")
+       "execCommand"
+       [| Jv.of_string cmd; Jv.of_bool false; arg |])
+
+let on_menu instance action =
+  match action with
+  | "open-folder" ->
+      Vdom_blit.process instance (Explorer_msg FileExplorer.pick_folder_msg)
+  | "save" ->
+      Vdom_blit.process instance (Editor_msg ContentEditor.save_active_msg)
+  | "cut" -> exec_command "cut" Jv.null
+  | "copy" -> exec_command "copy" Jv.null
+  | "paste" ->
+      (* The same implementation the Cmd+V shortcut uses — see clipboard.ml.
+         Only the range has to be found here, the shortcut getting it from the
+         keydown event instead. *)
+      let el = Jv.get (Jv.get Jv.global "document") "activeElement" in
+      let sel = Jv.get el "selectionStart" in
+      if Jv.is_none sel then ()
+      else
+        Clipboard.paste_focused ~start:(Jv.to_int sel)
+          ~stop:(Jv.to_int (Jv.get el "selectionEnd"))
+  (* An unknown action means this page and that menu disagree about their
+     vocabulary. Nothing useful to do about it here. *)
+  | _ -> ()
+
 let run () =
   (* This code is executed once the view is initialized, the elements are all
   ready *)
@@ -71,7 +117,12 @@ let run () =
     Option.get (Js_browser.Document.get_element_by_id Js_browser.document "app")
   in
   let env = Vdom_blit.merge [ Binding.env; Clipboard.env ] in
-  ignore (Vdom_blit.run ~env ~container app)
+  let instance = Vdom_blit.run ~env ~container app in
+  (* The one function the native side calls into the page. Registered after the
+     application is running, so that a menu item chosen early has somewhere to
+     send its message. *)
+  Binding.register "sunNotesMenu" (fun action ->
+      on_menu instance (Jv.to_string action))
 
 let () =
   Js_browser.Window.add_event_listener Js_browser.window

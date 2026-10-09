@@ -41,5 +41,49 @@ let () =
     Thread.create (fun () -> Lwt_main.run (Binding.serve ())) ()
   in
 
+  (* The native menu bar.
+
+     [Menu.set] has to run on the UI thread, and on macOS only once the
+     application is active — which it becomes when [Webview.run] starts. Hence
+     [Webview.dispatch]: the callback is queued now and runs on the UI thread
+     once the loop is up.
+
+     Every item does the same thing: call one function in the page, which
+     decides what the action means (see run/web/app.ml). Keeping the decision
+     there rather than here means the menu needs to know nothing about tabs,
+     selections or the clipboard.
+
+     The first menu is the application menu by macOS convention — the system
+     draws it with the application's own name whatever title it is given, and
+     expects Quit to live there. *)
+  Webview.dispatch w (fun w ->
+      let open Webview_desktop.Menu in
+      let page action () =
+        (* Item callbacks run on the UI thread, so eval needs no dispatch of
+           its own. The action name is quoted rather than interpolated raw: it
+           is a literal here, but the day one contains an apostrophe is not the
+           day to discover that. *)
+        Webview.eval w
+          (Printf.sprintf "window.sunNotesMenu(%s)" (Utils.js_quote action))
+      in
+      set w
+        [
+          ( "Sun notes",
+            [ item "Quit" ~key:'q' ~modifiers:[ Cmd ] (fun () -> Webview.terminate w) ] );
+          ( "File",
+            [
+              item "Save" ~key:'s' ~modifiers:[ Cmd ] (page "save");
+              separator;
+              item "Open Folder\xe2\x80\xa6" ~key:'o' ~modifiers:[ Cmd ]
+                (page "open-folder");
+            ] );
+          ( "Edit",
+            [
+              item "Cut" ~key:'x' ~modifiers:[ Cmd ] (page "cut");
+              item "Copy" ~key:'c' ~modifiers:[ Cmd ] (page "copy");
+              item "Paste" ~key:'v' ~modifiers:[ Cmd ] (page "paste");
+            ] );
+        ]);
+
   Webview.run w;
   Webview.destroy w

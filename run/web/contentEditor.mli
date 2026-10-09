@@ -24,6 +24,11 @@ val open_new_file : model -> path:string -> model
 (** Show a file that has just been created: empty, and straight in edit mode,
     since it was asked for in order to be written in. *)
 
+val save_active_msg : msg
+(** Write the tab on display back to disk, as its own save button does.
+    Exposed so that the native menu bar can reach the same behaviour. Does
+    nothing when no file is open. *)
+
 val update : model -> msg -> model * msg Vdom.Cmd.t
 
 val view : model -> msg Vdom.vdom

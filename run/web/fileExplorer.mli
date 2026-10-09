@@ -24,6 +24,11 @@ val update : model -> msg -> model * msg Vdom.Cmd.t * out_msg list
 
 val view : model -> msg Vdom.vdom
 
+val pick_folder_msg : msg
+(** Open the native directory chooser, as the folder button does. Exposed so
+    that the native menu bar can reach the same behaviour: a menu item cannot
+    build a private message on its own. *)
+
 val is_reading : model -> bool
 (** Whether a file is being read, so that the pane displaying it can say so
     while it waits. *)

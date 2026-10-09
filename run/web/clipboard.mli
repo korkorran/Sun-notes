@@ -10,9 +10,14 @@ val on_shortcut : (int -> int -> 'msg) -> 'msg Vdom.attribute
     field, [start] and [stop] delimiting the selection the pasted text is meant
     to replace. Other keystrokes are left alone. *)
 
-val read : (string -> 'msg) -> 'msg Vdom.Cmd.t
-(** The command to answer [on_shortcut] with. It yields the clipboard text, and
-    yields nothing at all if there is nothing to read. *)
+val paste : start:int -> stop:int -> 'msg Vdom.Cmd.t
+(** The command to answer [on_shortcut] with. It reads the clipboard and pastes
+    it over [start]..[stop] of the focused field, leaving the caret after the
+    inserted text. Nothing happens if there is nothing to read. *)
+
+val paste_focused : start:int -> stop:int -> unit
+(** [paste] as a plain effect, for a caller with no command context — the
+    native menu bar's Paste item. *)
 
 val env : Vdom_blit.env
 (** To be merged into the environment given to [Vdom_blit.run]. *)

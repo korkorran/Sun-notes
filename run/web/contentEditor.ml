@@ -15,6 +15,8 @@ type msg =
   | UpdateContent of string  (** the active tab was typed into *)
   | ToggleMode of bool
   | SaveFile of string  (** path *)
+  | Save_active
+      (** save whatever tab is on display; the menu bar has no path in hand *)
   | Save_done of string * string * string  (** path, contents, byte count *)
   | Save_failed of string * string
   | Tab_selected of string
@@ -22,7 +24,6 @@ type msg =
   | Close_confirmed of string
   | Close_cancelled of string
   | Paste_requested of int * int  (** the paste shortcut, over that selection *)
-  | Pasted of int * int * string
 
 (** Where the last save of one tab got to. It is reported next to the button
     rather than silently: a save that failed and a save that never happened
@@ -118,7 +119,7 @@ let write_file path contents =
       (fun written -> Save_done (path, contents, Binding.to_string written)),
       fun e -> Save_failed (path, e) )
 
-let update model = function
+let rec update model = function
   | UpdateContent content -> (
       match model.active with
       | None -> return model
@@ -142,6 +143,13 @@ let update model = function
               model with
               tabs = set_tab path (fun tab -> { tab with editable_mode }) model.tabs;
             })
+  (* The menu item knows nothing of tabs, so it asks for "the current one" and
+     the editor resolves it. No tab open is not a failure: there is simply
+     nothing to write. *)
+  | Save_active -> (
+      match model.active with
+      | None -> return model
+      | Some path -> update model (SaveFile path))
   | SaveFile path -> (
       match find_tab model path with
       | None -> return model
@@ -195,29 +203,7 @@ let update model = function
           tabs = set_tab path (fun tab -> { tab with closing = false }) model.tabs;
         }
   | Paste_requested (start, stop) ->
-      return ~c:[ Clipboard.read (fun text -> Pasted (start, stop, text)) ] model
-  | Pasted (start, stop, text) -> (
-      match model.active with
-      | None -> return model
-      | Some path ->
-          (* Unlike the explorer's one-line path field, newlines are kept here:
-             pasting several lines into a document is the point of it. *)
-          let splice tab =
-            (* The selection is the textarea's, and the textarea is drawn from
-               [content]; they agree, but clamping costs nothing and a
-               [String.sub] that does not agree raises. *)
-            let n = String.length tab.content in
-            let start = max 0 (min start n) in
-            let stop = max start (min stop n) in
-            let content =
-              String.sub tab.content 0 start ^ text
-              ^ String.sub tab.content stop (n - stop)
-            in
-            (* Pasting is editing, so it invalidates the last save like typing
-               does. *)
-            { tab with content; status = Idle }
-          in
-          return { model with tabs = set_tab path splice model.tabs })
+      return ~c:[ Clipboard.paste ~start ~stop ] model
 
 let status_view = function
   | Idle -> []
@@ -297,6 +283,10 @@ let tab_view active tab =
           ^ if tab.closing then " closing" else "");
       ]
     (name :: trailing)
+
+(** The save button's message for the tab on display, for the menu bar to
+    borrow. *)
+let save_active_msg = Save_active
 
 let view model =
   let strip =
