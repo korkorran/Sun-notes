@@ -21,11 +21,19 @@
 ; %{system} is one of the variables allowed there. mingw64 is what it reads as
 ; on the Windows toolchain owebview supports.
 ;
-; -mwindows and not -Wl,--subsystem,windows. The latter looks like the right
-; spelling and is not: OCaml hands the flag to the gcc driver, which reads
-; --subsystem as one of its own options and refuses it outright
-; ("unrecognized command-line option '--subsystem'"). -mwindows is the driver's
-; own flag for the same thing, and the one mingw documents.
+; The flag is flexlink's, not gcc's, and that took two wrong guesses to learn.
+; On Windows OCaml links through flexlink, which has its own option list — and
+; its own default:
+;
+;   -subsystem <id>     Set the subsystem (default: console)
+;
+; That default is the whole of the original symptom. Two spellings that look
+; right and are not: -Wl,--subsystem,windows, which flexlink forwards verbatim
+; to gcc, where --subsystem is not an option it knows; and -mwindows, gcc's own
+; flag for this, which never reaches gcc because flexlink rejects it first.
+;
+; Each -ccopt carries one argument, so it takes two of them to say
+; "-subsystem windows".
 ;
 ; The consequence worth knowing: a GUI program has no standard output when it
 ; is started from Explorer. The tracing in binding.ml is behind
@@ -37,7 +45,7 @@
  (enabled_if
   (= %{system} mingw64))
  (action
-  (write-file link_flags.sexp "(-ccopt -mwindows)")))
+  (write-file link_flags.sexp "(-ccopt -subsystem -ccopt windows)")))
 
 (rule
  (target link_flags.sexp)
