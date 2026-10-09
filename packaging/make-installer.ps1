@@ -217,6 +217,43 @@ switch ($machine) {
 }
 Info "PE machine is $Arch"
 
+# Checked here rather than left for a user to discover: a console subsystem is
+# invisible in the build log and unmistakable on the desktop. Fatal under
+# -Release, which is what gets handed to someone else; a warning otherwise, so
+# that a quick packaging check is not blocked by it.
+$subsystem = Get-PeSubsystem $BinSrc
+switch ($subsystem) {
+  2 { Info "PE subsystem is GUI — no console window on launch" }
+  3 {
+    $msg = "the executable is linked as a console program (PE subsystem 3), so Windows will`n" +
+           "    open a terminal alongside it. run/dune is meant to pass --subsystem windows on`n" +
+           "    mingw64; check that %{system} really reads as mingw64 there, and that the flag`n" +
+           "    reaches the linker. Failing that, editbin /SUBSYSTEM:WINDOWS flips the header."
+    if ($Release) { Die $msg } else { Warn $msg }
+  }
+  default { Warn "unrecognised PE subsystem '$subsystem' — expected 2 (GUI) or 3 (console)" }
+}
+
+# The PE optional header's Subsystem field: 2 is a graphical program, 3 a
+# console one. Windows allocates a console window for a console program when it
+# is launched from Explorer, whether or not anything is ever written to it —
+# which is what users see if the executable is linked without
+# --subsystem windows (see run/dune).
+function Get-PeSubsystem([string] $Path) {
+  $fs = [System.IO.File]::OpenRead($Path)
+  try {
+    $br = New-Object System.IO.BinaryReader($fs)
+    $fs.Position = 0x3C
+    $peOffset = $br.ReadInt32()
+    $fs.Position = $peOffset
+    if ($br.ReadUInt32() -ne 0x00004550) { return $null }   # "PE\0\0"
+    # The COFF header is 20 bytes, and Subsystem sits 68 bytes into the
+    # optional header that follows — the same offset in PE32 and PE32+.
+    $fs.Position = $peOffset + 4 + 20 + 68
+    return $br.ReadUInt16()
+  } finally { $fs.Dispose() }
+}
+
 # The import table, read with whichever tool is around. objdump comes with the
 # mingw toolchain opam uses on Windows; dumpbin comes with Visual Studio.
 # Finding one of these matters more than it looks. Without it nothing can be

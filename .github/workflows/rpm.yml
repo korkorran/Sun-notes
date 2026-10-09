@@ -312,6 +312,8 @@ jobs:
         continue-on-error: true
         run: |
           dnf -y install xorg-x11-server-Xvfb dbus-x11
+          # The traces are off by default; the assertion below reads them.
+          export SUN_NOTES_DEBUG=1
           export WEBKIT_DISABLE_COMPOSITING_MODE=1
           export WEBKIT_DISABLE_DMABUF_RENDERER=1
           out=$(xvfb-run -a dbus-run-session -- timeout 20 sun-notes 2>&1 || true)

@@ -1,7 +1,10 @@
 let () =
   (* Library version info (no window needed). *)
   let v = Webview.version () in
-  Printf.printf "using webview %s\n%!" v.Webview.version_number;
+  (* Through Binding.trace like everything else: a graphical program launched
+     from Explorer has no valid standard output, and writing to it would raise
+     rather than be ignored. *)
+  Binding.trace "using webview %s\n%!" v.Webview.version_number;
 
   let w = Webview.create ~debug:true () in
   Webview.set_title w "Sun notes";
@@ -11,7 +14,7 @@ let () =
 
   (* Native handles (opaque pointers, for platform-specific FFI such as a file
      dialog). 0n means unavailable. *)
-  Printf.printf "native window handle = %nx\n%!" (Webview.get_window w);
+  Binding.trace "native window handle = %nx\n%!" (Webview.get_window w);
   ignore (Webview.get_native_handle w Webview.Browser_controller);
 
   (* Every call the page can make into the native side lives in binding.ml,

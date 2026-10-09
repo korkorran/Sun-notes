@@ -7,7 +7,38 @@
  ; owebview.desktop is the companion library for what a native application
  ; needs beyond the web view itself; Locate_assets is what tells the binary
  ; where its web/ directory is.
- (libraries owebview owebview.desktop unix lwt.unix threads.posix))
+ (libraries owebview owebview.desktop unix lwt.unix threads.posix)
+ (link_flags
+  (:include link_flags.sexp)))
+
+; On Windows an executable declares in its PE header whether it is a console
+; (CUI) or a graphical (GUI) program, and ocamlopt produces the former. Windows
+; then allocates a console window whenever the app is launched from Explorer,
+; whether or not anything is written to it — which is what users saw.
+;
+; Two rules with complementary conditions rather than one: dune has no OS
+; conditional for link_flags, but it does have enabled_if on rules, and
+; %{system} is one of the variables allowed there. mingw64 is what it reads as
+; on the Windows toolchain owebview supports.
+;
+; The consequence worth knowing: a GUI program has no standard output when it
+; is started from Explorer. The tracing in binding.ml is behind
+; SUN_NOTES_DEBUG for that reason among others. Output still arrives normally
+; when the process is started from a shell with its handles redirected, which
+; is how the CI smoke tests read it.
+(rule
+ (target link_flags.sexp)
+ (enabled_if
+  (= %{system} mingw64))
+ (action
+  (write-file link_flags.sexp "(-ccopt -Wl,--subsystem,windows)")))
+
+(rule
+ (target link_flags.sexp)
+ (enabled_if
+  (<> %{system} mingw64))
+ (action
+  (write-file link_flags.sexp "()")))
 
 ; Stage the web/ assets next to the built binary (_build/.../examples/web/) so
 ; the example is self-contained in the build tree — without installing them

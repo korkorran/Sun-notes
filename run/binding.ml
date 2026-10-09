@@ -12,6 +12,33 @@
 
 open Lwt.Syntax
 
+(* Tracing, silent unless SUN_NOTES_DEBUG is set in the environment.
+
+   These lines used to print on every call. On Windows that meant a console
+   window filling up with file paths, and since the executable is now linked as
+   a graphical program (see run/dune) there is no standard output to print to
+   when it is launched from Explorer anyway.
+
+   They are silenced rather than deleted because the sequence they show is what
+   located the garbage-collector crash a binding call used to provoke: seeing
+   read_dir answer and then the process die narrowed it down faster than
+   anything else. Set SUN_NOTES_DEBUG and start the app from a terminal to get
+   them back.
+
+   [Printf.ifprintf] consumes the same arguments and discards them, so the call
+   sites read as before and their formats are still type-checked. *)
+let debug = Option.is_some (Sys.getenv_opt "SUN_NOTES_DEBUG")
+
+let trace fmt =
+  if debug then
+    (* A graphical program started from Explorer has no valid standard output,
+       and a write to it raises rather than being discarded. Tracing is a
+       diagnostic; it has no business bringing the application down. *)
+    Printf.kfprintf
+      (fun oc -> try flush oc with Sys_error _ -> ())
+      stdout fmt
+  else Printf.ifprintf stdout fmt
+
 (* Expose [name] as a binding whose handler is an ordinary Lwt computation.
 
    The callback [Webview.bind] wants must return [unit], so there is nowhere to
@@ -63,7 +90,7 @@ let one_path binding req =
    path as the rest so that every binding is registered the same way. *)
 let home_dir w =
   lwt_bind w "home_dir" (fun id req ->
-      Printf.printf "binding called <home_dir>: id=%s req=%s\n%!" id req;
+      trace "binding called <home_dir>: id=%s req=%s\n%!" id req;
       answer w id (fun () ->
           let home =
             match Sys.getenv_opt "HOME" with
@@ -81,7 +108,7 @@ let home_dir w =
    this reads text files, not arbitrary bytes. *)
 let read_file w =
   lwt_bind w "read_file" (fun id req ->
-      Printf.printf "binding called <read_file>: id=%s req=%s\n%!" id req;
+      trace "binding called <read_file>: id=%s req=%s\n%!" id req;
       answer w id (fun () ->
           let path = one_path "read_file" req in
           let* contents =
@@ -95,7 +122,7 @@ let read_file w =
    One level only: to walk down, the page calls read_dir again on the child. *)
 let read_dir w =
   lwt_bind w "read_dir" (fun id req ->
-      Printf.printf "binding called <read_dir>: id=%s req=%s\n%!" id req;
+      trace "binding called <read_dir>: id=%s req=%s\n%!" id req;
       answer w id (fun () ->
           let path = one_path "read_dir" req in
           let* entries =
@@ -154,7 +181,7 @@ let write_file w =
               (* [req] holds the whole file, so only the path is printed:
                  echoing the contents would dump the document into the terminal
                  at every save. *)
-              Printf.printf
+              trace
                 "binding called <write_file>: id=%s path=%s bytes=%d\n%!" id
                 path (String.length contents);
               let* () =
@@ -163,7 +190,7 @@ let write_file w =
               in
               Lwt.return (string_of_int (String.length contents))
           | _ ->
-              Printf.printf "binding called <write_file>: id=%s (bad arguments)\n%!"
+              trace "binding called <write_file>: id=%s (bad arguments)\n%!"
                 id;
               failwith
                 "write_file expects a file path and its contents, as strings"))
@@ -176,7 +203,7 @@ let write_file w =
    one — that is what write_file is for. *)
 let create_file w =
   lwt_bind w "create_file" (fun id req ->
-      Printf.printf "binding called <create_file>: id=%s req=%s\n%!" id req;
+      trace "binding called <create_file>: id=%s req=%s\n%!" id req;
       answer w id (fun () ->
           let path = one_path "create_file" req in
           let* fd =
@@ -195,7 +222,12 @@ let install w =
      reaching this means a bug in the plumbing — worth seeing, not worth
      dying for. *)
   (Lwt.async_exception_hook :=
-     fun exn -> Printf.eprintf "lwt: %s\n%!" (Printexc.to_string exn));
+     fun exn ->
+       (* Kept unconditional — reaching this means a bug in the plumbing, which
+          is worth seeing whenever there is somewhere to see it. Guarded all the
+          same: on Windows there may be no standard error to write to. *)
+       try Printf.eprintf "lwt: %s\n%!" (Printexc.to_string exn)
+       with Sys_error _ -> ());
   home_dir w;
   read_file w;
   read_dir w;
@@ -210,5 +242,11 @@ let install w =
     waiting forever on promises nobody can settle. Long-lived work belongs
     here, beside the wait. *)
 let serve () =
-  let* () = Lwt_io.printl "[lwt] backend loop started" in
+  let* () =
+    if debug then
+      Lwt.catch
+        (fun () -> Lwt_io.printl "[lwt] backend loop started")
+        (fun _ -> Lwt.return_unit)
+    else Lwt.return_unit
+  in
   fst (Lwt.wait ())

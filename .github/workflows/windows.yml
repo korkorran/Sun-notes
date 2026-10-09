@@ -245,6 +245,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+          # The traces are off by default; the assertion below reads them.
+          $env:SUN_NOTES_DEBUG = '1'
           $p = Start-Process 'C:\sun-notes-test\sun-notes.exe' -PassThru -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt
           Start-Sleep -Seconds 20
           if (-not $p.HasExited) { $p.Kill() }

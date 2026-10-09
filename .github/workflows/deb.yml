@@ -277,6 +277,8 @@ jobs:
           # The window handle is printed by main.ml *after* Webview.create, so
           # seeing it means GTK and WebKit really did come up. The process then
           # runs its event loop until the timeout kills it, hence exit 124.
+          # The traces are off by default; the assertion below reads them.
+          export SUN_NOTES_DEBUG=1
           export WEBKIT_DISABLE_COMPOSITING_MODE=1
           export WEBKIT_DISABLE_DMABUF_RENDERER=1
           out=$(xvfb-run -a dbus-run-session -- timeout 20 sun-notes 2>&1 || true)
