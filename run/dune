@@ -21,6 +21,12 @@
 ; %{system} is one of the variables allowed there. mingw64 is what it reads as
 ; on the Windows toolchain owebview supports.
 ;
+; -mwindows and not -Wl,--subsystem,windows. The latter looks like the right
+; spelling and is not: OCaml hands the flag to the gcc driver, which reads
+; --subsystem as one of its own options and refuses it outright
+; ("unrecognized command-line option '--subsystem'"). -mwindows is the driver's
+; own flag for the same thing, and the one mingw documents.
+;
 ; The consequence worth knowing: a GUI program has no standard output when it
 ; is started from Explorer. The tracing in binding.ml is behind
 ; SUN_NOTES_DEBUG for that reason among others. Output still arrives normally
@@ -31,7 +37,7 @@
  (enabled_if
   (= %{system} mingw64))
  (action
-  (write-file link_flags.sexp "(-ccopt -Wl,--subsystem,windows)")))
+  (write-file link_flags.sexp "(-ccopt -mwindows)")))
 
 (rule
  (target link_flags.sexp)
