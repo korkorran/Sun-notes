@@ -35,22 +35,6 @@ body {
   flex-direction: column;
 }
 
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.path {
-  flex: 1 1 0;
-  /* Without this a long path stretches the whole column instead of scrolling
-     inside the field. */
-  min-width: 0;
-  padding: 0.35rem 0.5rem;
-  font: inherit;
-  font-size: 0.95rem;
-}
-
 button {
   padding: 0.4rem 0.8rem;
   font-size: 0.95rem;

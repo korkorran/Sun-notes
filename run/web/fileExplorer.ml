@@ -28,8 +28,6 @@ type creating = { parent : string; name : string }
 type msg =
   | Home_known of string  (** [home_dir] answered; the tree can be rooted *)
   | Home_failed of string
-  | Path_edited of string
-  | Open_clicked  (** re-root the tree on the typed path *)
   | Listed of string * Jv.t  (** [read_dir] answered for that path *)
   | List_failed of string * string
   | Toggled of entry  (** a directory row was clicked *)
@@ -42,9 +40,10 @@ type msg =
   | Create_submitted
   | Created of string * string  (** [create_file] answered: parent, path *)
   | Create_failed of string
-  | Root_picker_set of bool  (** show or hide the path field *)
-  | Path_paste of int * int  (** the paste shortcut, over that selection *)
-  | Path_pasted of int * int * string
+  | Pick_folder  (** the folder button was clicked: ask for the dialog *)
+  | Folder_picked of string option
+      (** the native chooser answered; [None] if the user cancelled *)
+  | Pick_failed of string
 
 (** The only things the explorer has to say to the outside world. Everything
     else it handles on its own. *)
@@ -55,10 +54,8 @@ type out_msg =
 type model = {
   root : string;  (** directory shown at the top of the tree *)
   tree : entry list;  (** contents of [root] *)
-  path : string;  (** the path currently typed in the input *)
   reading : bool;  (** a file is being read *)
   creating : creating option;  (** a new file is being named *)
-  choosing_root : bool;  (** the path field is showing *)
   error : string option;  (** last binding failure, shown above the tree *)
 }
 
@@ -72,6 +69,17 @@ let read_dir path =
       [| Jv.of_string path |],
       (fun listing -> Listed (path, listing)),
       fun e -> List_failed (path, e) )
+
+(* The native directory chooser. It answers with a path or with [null]; the
+   binding is the one registered on the UI thread, since the dialog is modal
+   (see run/binding.ml). *)
+let pick_folder =
+  Binding.Call
+    ( "pick_directory",
+      [||],
+      (fun v ->
+        Folder_picked (if Jv.is_null v then None else Some (Jv.to_string v))),
+      fun e -> Pick_failed e )
 
 let read_file path =
   Binding.Call
@@ -91,10 +99,8 @@ let init =
   ( {
       root = "";
       tree = [];
-      path = "";
       reading = false;
       creating = None;
-      choosing_root = false;
       error = None;
     },
     Cmd.batch
@@ -140,13 +146,16 @@ let rec set_node : string -> (node -> node) -> entry list -> entry list =
 
 let update model = function
   | Home_known home ->
-      return ~c:[ read_dir home ] { model with root = home; path = home }
+      return ~c:[ read_dir home ] { model with root = home }
   | Home_failed e -> return { model with error = Some e }
-  | Path_edited path -> return { model with path }
-  | Open_clicked ->
-      let root = String.trim model.path in
+  | Pick_folder -> return ~c:[ pick_folder ] model
+  (* Cancelled: the tree stays where it was. Nothing to report either — the
+     user closing a dialog they opened is not a failure. *)
+  | Folder_picked None -> return model
+  | Folder_picked (Some root) ->
       return ~c:[ read_dir root ]
         { model with root; tree = []; creating = None; error = None }
+  | Pick_failed e -> return { model with error = Some e }
   (* An answer for the root fills the whole tree; any other one belongs to a
      directory somewhere inside it. A listing that arrives after the tree has
      been re-rooted finds no matching path and is simply dropped. *)
@@ -158,7 +167,6 @@ let update model = function
         {
           model with
           tree = decode_entries listing;
-          choosing_root = false;
           error = None;
         }
   | Listed (path, listing) ->
@@ -231,30 +239,6 @@ let update model = function
   | Create_failed e ->
       (* [creating] is kept: the name is still there, ready to be corrected. *)
       return { model with error = Some e }
-  | Root_picker_set choosing_root -> return { model with choosing_root }
-  | Path_paste (start, stop) ->
-      return
-        ~c:[ Clipboard.read (fun text -> Path_pasted (start, stop, text)) ]
-        model
-  | Path_pasted (start, stop, text) ->
-      (* The field is one line, so the newline that comes with a path copied
-         from a terminal or from Finder is dropped rather than pasted — which
-         is what a browser does with a multi-line paste into an input. *)
-      let text =
-        String.concat ""
-          (String.split_on_char '\n' text |> List.concat_map (String.split_on_char '\r'))
-      in
-      (* The selection is the field's, and the field is drawn from [path]; they
-         agree, but clamping costs nothing and a [String.sub] that does not
-         raises. *)
-      let n = String.length model.path in
-      let start = max 0 (min start n) in
-      let stop = max start (min stop n) in
-      let path =
-        String.sub model.path 0 start ^ text
-        ^ String.sub model.path stop (n - stop)
-      in
-      return { model with path }
 
 (* A folder, drawn rather than written. The rest of the tree is monochrome
    glyphs that follow the text colour, which an emoji would neither do nor
@@ -280,15 +264,15 @@ let folder_icon =
         [];
     ]
 
-(** Reveals or hides the field that re-roots the tree. It sits on the root
-    line, beside the directory it would replace. *)
-let folder_button showing =
+(** Opens the system's own directory chooser. It sits on the root line, beside
+    the directory it would replace. *)
+let folder_button =
   elt "button"
     ~a:
       [
         class_ "folder";
         attr "title" "open another folder";
-        onclick (fun _ -> Root_picker_set (not showing));
+        onclick (fun _ -> Pick_folder);
       ]
     [ folder_icon ]
 
@@ -389,51 +373,15 @@ and entry_view ~creating e =
   elt "li" ~key:e.path (row :: children)
 
 let view model =
-  let cannot_open = model.reading || String.trim model.path = "" in
   div
     ~a:[ class_ "explorer" ]
-    ((* Hidden until the folder button asks for it: the tree is what the column
-        is for, and the path of another directory is wanted rarely. *)
-     (if model.choosing_root then
-        [
-          div
-            ~a:[ class_ "actions" ]
-            [
-              input
-                ~a:
-                  [
-                    type_ "text";
-                    class_ "path";
-                    value model.path;
-                    attr "placeholder" "/path/to/folder";
-                    (* Revealed to be typed in, so it takes the caret with it. *)
-                    autofocus;
-                    (* The window has no Edit menu, so the paste shortcut has to
-                       be served by the page; see clipboard.ml. *)
-                    Clipboard.on_shortcut (fun start stop ->
-                        Path_paste (start, stop));
-                    oninput (fun s -> Path_edited s);
-                    (* Enter opens too: a path input that only answers to the
-                       button would be a surprise. Escape folds it back. *)
-                    onkeydown_cancel (fun (e : key_event) ->
-                        if e.which = 13 && not cannot_open then Some Open_clicked
-                        else if e.which = 27 then Some (Root_picker_set false)
-                        else None);
-                  ]
-                [];
-              elt "button"
-                ~a:[ onclick (fun _ -> Open_clicked); disabled cannot_open ]
-                [ text "open" ];
-            ];
-        ]
-      else [])
-    @ [
+    ([
         (* The root is a directory like any other, so it gets a "+" too —
            without one there would be no way to add a file beside the ones the
            tree opens on. *)
         div
           ~a:[ class_ "root" ]
-          ((folder_button model.choosing_root
+          ((folder_button
            :: [ elt "span" ~a:[ class_ "root-path" ] [ text model.root ] ])
           @ if model.root = "" then [] else [ add_button model.root ]);
       ]

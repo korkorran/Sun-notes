@@ -100,6 +100,34 @@ let home_dir w =
           in
           Lwt.return (Utils.js_quote home)))
 
+(* The system's own directory chooser, answering with the path the user picked
+   or [null] if they cancelled.
+
+   Registered with [Webview.bind] rather than [lwt_bind], and that is the whole
+   point of it. [Dialog.open_directory] is modal and synchronous — it runs the
+   platform's own event loop until the user is done — and it has to be called
+   on the thread owning the UI loop. [lwt_bind] hops onto the Lwt thread, which
+   is precisely where it may not run.
+
+   Blocking the UI thread here is not the defect it would be elsewhere in this
+   file: a modal dialog freezing the window behind it is what modal means. The
+   reason the other bindings go through Lwt is that a slow disk must not freeze
+   anything; a dialog waiting on a person is a different matter.
+
+   No [answer] either, for the same reason — that helper settles the promise
+   from an Lwt computation. Here the answer is already in hand. *)
+let pick_directory w =
+  Webview.bind w "pick_directory" (fun id _req ->
+      trace "binding called <pick_directory>: id=%s\n%!" id;
+      let result =
+        match
+          Webview_desktop.Dialog.open_directory w ~title:"Open a folder" ()
+        with
+        | Some path -> Utils.js_quote path
+        | None -> "null"
+      in
+      Webview.return w id ~error:false ~result)
+
 (* The contents of a file, as a string.
 
    [Webview.return] wants a JSON value, so both the contents and the error go
@@ -229,6 +257,7 @@ let install w =
        try Printf.eprintf "lwt: %s\n%!" (Printexc.to_string exn)
        with Sys_error _ -> ());
   home_dir w;
+  pick_directory w;
   read_file w;
   read_dir w;
   write_file w;
