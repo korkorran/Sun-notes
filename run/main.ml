@@ -28,7 +28,7 @@ let () =
      relative to that file. We locate the web/ directory from the executable
      location, so it works both installed and from the build tree. *)
   let index =
-    Filename.concat (Webview_desktop.Locate_assets.web_dir ()) "index.html"
+    Filename.concat (Webview_desktop.Locate_assets.assets_dir "web") "index.html"
   in
   Webview.navigate w ("file://" ^ index);
 
@@ -58,7 +58,11 @@ let () =
      expects Quit to live there. *)
   Webview.dispatch w (fun w ->
       let open Webview_desktop.Menu in
+      (* Traced, because a menu item that does nothing gives no other sign of
+         whether its callback ran at all — and on Windows an accelerator has
+         two routes to travel before it gets here. *)
       let page action () =
+        Binding.trace "menu: %s\n%!" action;
         (* Item callbacks run on the UI thread, so eval needs no dispatch of
            its own. The action name is quoted rather than interpolated raw: it
            is a literal here, but the day one contains an apostrophe is not the
@@ -69,7 +73,11 @@ let () =
       set w
         [
           ( "Sun notes",
-            [ item "Quit" ~key:'q' ~modifiers:[ Cmd ] (fun () -> Webview.terminate w) ] );
+            [
+              item "Quit" ~key:'q' ~modifiers:[ Cmd ] (fun () ->
+                  Binding.trace "menu: quit\n%!";
+                  Webview.terminate w);
+            ] );
           ( "File",
             [
               item "Save" ~key:'s' ~modifiers:[ Cmd ] (page "save");
