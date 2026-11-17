@@ -76,7 +76,7 @@ let answer w id f =
       Webview.return w id ~error:false ~result;
       Lwt.return_unit)
     (fun exn ->
-      Webview.return w id ~error:true ~result:(Yojson.Safe.to_string (`String (describe exn)));
+      Webview.return w id ~error:true ~result:(Utils.quote (describe exn));
       Lwt.return_unit)
 
 (* The first string argument of a request, for the bindings that take one. *)
@@ -98,7 +98,7 @@ let home_dir w =
             (* Windows spells it differently; "." at least lists something. *)
             | None -> Option.value (Sys.getenv_opt "USERPROFILE") ~default:"."
           in
-          Lwt.return (Yojson.Safe.to_string (`String home))))
+          Lwt.return (Utils.quote home)))
 
 (* The system's own directory chooser, answering with the path the user picked
    or [null] if they cancelled.
@@ -123,7 +123,7 @@ let pick_directory w =
         match
           Webview_desktop.Dialog.open_directory w ~title:"Open a folder" ()
         with
-        | Some path -> Yojson.Safe.to_string (`String path)
+        | Some path -> Utils.quote path
         | None -> "null"
       in
       Webview.return w id ~error:false ~result)
@@ -141,7 +141,7 @@ let read_file w =
           let* contents =
             Lwt_io.with_file ~mode:Lwt_io.Input path Lwt_io.read
           in
-          Lwt.return (Yojson.Safe.to_string (`String contents))))
+          Lwt.return (Utils.quote contents)))
 
 (* The direct contents of a directory, as a JSON array of
    {"name", "path", "kind"} where kind is "file", "directory" or "other".
@@ -185,9 +185,9 @@ let read_dir w =
                knows the right one. *)
             Lwt.return
               (Printf.sprintf "{\"name\":%s,\"path\":%s,\"kind\":%s}"
-                 (Yojson.Safe.to_string (`String name))
-                 (Yojson.Safe.to_string (`String (Filename.concat path name)))
-                 (Yojson.Safe.to_string (`String kind)))
+                 (Utils.quote name)
+                 (Utils.quote (Filename.concat path name))
+                 (Utils.quote kind))
           in
           (* [map_s] rather than [map_p]: the entries are stat'ed one after the
              other, which keeps a large directory from opening as many file
@@ -239,7 +239,7 @@ let create_file w =
               0o644
           in
           let* () = Lwt_unix.close fd in
-          Lwt.return (Yojson.Safe.to_string (`String path))))
+          Lwt.return (Utils.quote path)))
 
 (** Register every binding on [w]. Called from the UI thread before the page is
     loaded, so that nothing the page does at startup finds a missing function. *)

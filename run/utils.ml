@@ -1,4 +1,6 @@
-
+(* A string as a JSON literal, ready for [Webview.return]'s result or for
+   interpolation into an [eval] snippet. *)
+let quote s = Yojson.Safe.to_string (`String s)
 
 (* Decode a binding request: [req] is the JSON array of the JS arguments, and
    this returns every string it holds, in order. Arguments that are not strings
