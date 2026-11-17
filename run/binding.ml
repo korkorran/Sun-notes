@@ -76,7 +76,7 @@ let answer w id f =
       Webview.return w id ~error:false ~result;
       Lwt.return_unit)
     (fun exn ->
-      Webview.return w id ~error:true ~result:(Utils.js_quote (describe exn));
+      Webview.return w id ~error:true ~result:(Yojson.Safe.to_string (`String (describe exn)));
       Lwt.return_unit)
 
 (* The first string argument of a request, for the bindings that take one. *)
@@ -98,7 +98,7 @@ let home_dir w =
             (* Windows spells it differently; "." at least lists something. *)
             | None -> Option.value (Sys.getenv_opt "USERPROFILE") ~default:"."
           in
-          Lwt.return (Utils.js_quote home)))
+          Lwt.return (Yojson.Safe.to_string (`String home))))
 
 (* The system's own directory chooser, answering with the path the user picked
    or [null] if they cancelled.
@@ -123,17 +123,16 @@ let pick_directory w =
         match
           Webview_desktop.Dialog.open_directory w ~title:"Open a folder" ()
         with
-        | Some path -> Utils.js_quote path
+        | Some path -> Yojson.Safe.to_string (`String path)
         | None -> "null"
       in
       Webview.return w id ~error:false ~result)
 
 (* The contents of a file, as a string.
 
-   [Webview.return] wants a JSON value, so both the contents and the error go
-   through [Utils.js_quote], which produces a quoted literal that is valid JSON
-   too. A file that is not valid UTF-8 would therefore not survive the trip:
-   this reads text files, not arbitrary bytes. *)
+   [Webview.return] wants a JSON value, so both the contents and the error are
+   encoded with Yojson. A file that is not valid UTF-8 would therefore not
+   survive the trip: this reads text files, not arbitrary bytes. *)
 let read_file w =
   lwt_bind w "read_file" (fun id req ->
       trace "binding called <read_file>: id=%s req=%s\n%!" id req;
@@ -142,7 +141,7 @@ let read_file w =
           let* contents =
             Lwt_io.with_file ~mode:Lwt_io.Input path Lwt_io.read
           in
-          Lwt.return (Utils.js_quote contents)))
+          Lwt.return (Yojson.Safe.to_string (`String contents))))
 
 (* The direct contents of a directory, as a JSON array of
    {"name", "path", "kind"} where kind is "file", "directory" or "other".
@@ -186,9 +185,9 @@ let read_dir w =
                knows the right one. *)
             Lwt.return
               (Printf.sprintf "{\"name\":%s,\"path\":%s,\"kind\":%s}"
-                 (Utils.js_quote name)
-                 (Utils.js_quote (Filename.concat path name))
-                 (Utils.js_quote kind))
+                 (Yojson.Safe.to_string (`String name))
+                 (Yojson.Safe.to_string (`String (Filename.concat path name)))
+                 (Yojson.Safe.to_string (`String kind)))
           in
           (* [map_s] rather than [map_p]: the entries are stat'ed one after the
              other, which keeps a large directory from opening as many file
@@ -240,7 +239,7 @@ let create_file w =
               0o644
           in
           let* () = Lwt_unix.close fd in
-          Lwt.return (Utils.js_quote path)))
+          Lwt.return (Yojson.Safe.to_string (`String path))))
 
 (** Register every binding on [w]. Called from the UI thread before the page is
     loaded, so that nothing the page does at startup finds a missing function. *)

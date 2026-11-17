@@ -29,6 +29,7 @@ depends: [
   "brr"
   "vdom"
   "lwt" {>= "5.3"}
+  "yojson"
   "js_of_ocaml-compiler"
   "odoc" {with-doc}
 ]

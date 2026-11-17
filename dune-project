@@ -36,5 +36,7 @@
   ; 5.3 is where Lwt.Syntax arrived, which binding.ml opens for let*.
   (lwt
    (>= 5.3))
+  ; Encodes the binding replies and decodes their requests; see run/utils.ml.
+  yojson
   ; (modes js) in run/web/dune compiles the page to JavaScript.
   js_of_ocaml-compiler))

@@ -68,7 +68,7 @@ let () =
            is a literal here, but the day one contains an apostrophe is not the
            day to discover that. *)
         Webview.eval w
-          (Printf.sprintf "window.sunNotesMenu(%s)" (Utils.js_quote action))
+          (Printf.sprintf "window.sunNotesMenu(%s)" (Yojson.Safe.to_string (`String action)))
       in
       set w
         [
