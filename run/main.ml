@@ -118,7 +118,7 @@ let run_window () =
      string to both is what arranges that. *)
   if unpackaged then Webview_desktop.Icon.set_app_id app_id;
 
-  let w = Webview.create ~debug:false () in
+  let w = Webview.create ~debug:(Build_profile.profile <> "release") () in
   Webview.set_title w "Sun notes";
   (* Two columns side by side need more room than the 480x320 the example
      started with, and the output pane is now meant to hold a whole file. *)

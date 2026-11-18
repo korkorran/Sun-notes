@@ -48,6 +48,15 @@
 ; SUN_NOTES_DEBUG for that reason among others. Output still arrives normally
 ; when the process is started from a shell with its handles redirected, which
 ; is how the CI smoke tests read it.
+; The dune profile the binary was built with, as a value main.ml can read:
+; the web inspector is on in every profile but release. `dune build -p`, which
+; is what opam runs, implies the release profile, and so does --release in the
+; packaging scripts, so neither ships with the inspector enabled.
+(rule
+ (target build_profile.ml)
+ (action
+  (write-file %{target} "let profile = \"%{profile}\"\n")))
+
 (rule
  (target link_flags.sexp)
  (enabled_if
