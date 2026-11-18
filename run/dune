@@ -1,5 +1,10 @@
 (executable
  (name main)
+ ; Installed as <prefix>/bin/sun-notes, which is what makes
+ ; `opam install https://github.com/korkorran/Sun-notes` produce a command the
+ ; user can run. The page and the icon go to <prefix>/share/sun-notes, see the
+ ; install stanza at the bottom of this file.
+ (public_name sun-notes)
  ; lwt.unix brings Lwt together with Lwt_unix, Lwt_io and Lwt_preemptive;
  ; threads.posix is what lets the Lwt event loop have a thread of its own,
  ; since the webview keeps the process's main thread.
@@ -57,18 +62,14 @@
  (action
   (write-file link_flags.sexp "()")))
 
-; Stage the web/ assets next to the built binary (_build/default/run/web/) so
-; the application is self-contained in the build tree — without installing them
-; into the opam switch. The binary reads them from there; see
-; Webview_desktop.Locate_assets.assets_dir.
+; The page and the icon are files on disk, and they reach the running binary by
+; two different routes. main.ml reads either one (see data_path there); what
+; follows is the two routes.
 ;
-; logo.png is staged beside it for the same reason: main.ml reads the icon from
-; there with Locate_assets.exe_dir, and a build tree has no other copy of it to
-; read. Staged, and deliberately not installed — the three packaging scripts
-; copy main.exe and web/ by name and build their own icons from the logo.png at
-; the repository root, so this copy never reaches a package. That is what lets
-; main.ml treat the absence of an installer's own icon as the sign of a build
-; tree.
+; In a build tree they are staged beside the binary, in _build/default/run/, so
+; that `dune exec run/main.exe` is self-contained and the packaging scripts have
+; one directory to copy from. The alias is what builds them: `dune build` does
+; not run a rule nothing depends on.
 (alias
  (name all)
  (deps
@@ -80,3 +81,28 @@
  (deps ../logo.png)
  (action
   (copy ../logo.png logo.png)))
+
+; Installed by opam they go to <prefix>/share/sun-notes, beside the
+; <prefix>/bin/sun-notes the public_name above installs. This is the only route
+; `opam install` takes: the opam build command is `dune build -p sun-notes
+; @install`, which builds what is installed and nothing else — the alias above
+; is not part of it.
+;
+; Only the three files the page actually loads. The rest of run/web/ is build
+; input: app.ml and its modules are what app.js is compiled from, and app.bc.js
+; is the intermediate the rule in run/web/dune renames.
+(install
+ (package sun-notes)
+ (section share)
+ (files
+  (web/index.html as web/index.html)
+  (web/style.css as web/style.css)
+  (web/app.js as web/app.js)
+  (logo.png as logo.png)))
+
+; The .deb, .rpm, .dmg and Windows packages use neither route: their scripts
+; copy main.exe and web/ out of the build tree by name, and build their own
+; icons from the logo.png at the repository root. The staged logo.png above
+; therefore never reaches one of those packages — which is what lets main.ml
+; read "no installer icon around me" as the sign of a build tree or an opam
+; install.

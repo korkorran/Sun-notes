@@ -39,10 +39,32 @@ let packaged () =
   || Filename.basename exe = app_id
      && Sys.file_exists ("/usr/share/applications/" ^ app_id ^ ".desktop")
 
-(* The icon file, staged beside the binary by run/dune the same way web/ is —
-   so a build tree has it and a package does not, which is exactly right. *)
-let icon_path () =
-  Filename.concat (Webview_desktop.Locate_assets.exe_dir ()) "logo.png"
+(* ------------------------------------------------------- the data files
+
+   The page and the icon are files on disk, and there are two places they can
+   be. A build tree stages them beside the binary, in _build/default/run/; an
+   `opam install` puts the binary in <prefix>/bin and its data in
+   <prefix>/share/sun-notes. See run/dune, which arranges both.
+
+   Both are expressed relative to the executable rather than to the current
+   directory, which is what [Locate_assets] is for: the program can be started
+   from anywhere, and a switch that is moved or copied takes its bin/ and
+   share/ along together. *)
+let data_path name =
+  let resolve = Webview_desktop.Locate_assets.assets_dir in
+  let beside = resolve name in
+  if Sys.file_exists beside then beside
+  else
+    let installed = resolve (Filename.concat "../share/sun-notes" name) in
+    (* The build-tree path on failure, not the installed one: someone whose
+       files are missing is nearly always someone who has not run `dune
+       build`, and that is the path they need to see. *)
+    if Sys.file_exists installed then installed else beside
+
+(* The icon. Absent from a packaged install -- the .deb, .rpm, .dmg and
+   Windows installer carry their own, converted to the format each system
+   wants -- which is exactly the case where nothing below asks for it. *)
+let icon_path () = data_path "logo.png"
 
 (* --install-icon: write the desktop entry a Linux desktop needs before it
    will show the icon at all.
@@ -115,11 +137,8 @@ let run_window () =
 
   (* Load the page from on-disk files (web/) instead of an inline HTML string.
      The CSS and JS referenced with relative paths in index.html are resolved
-     relative to that file. We locate the web/ directory from the executable
-     location, so it works both installed and from the build tree. *)
-  let index =
-    Filename.concat (Webview_desktop.Locate_assets.assets_dir "web") "index.html"
-  in
+     relative to that file, so the whole page follows from this one path. *)
+  let index = Filename.concat (data_path "web") "index.html" in
   Webview.navigate w ("file://" ^ index);
 
   (* The icon, for the Dock on macOS, the taskbar on Windows and X11.

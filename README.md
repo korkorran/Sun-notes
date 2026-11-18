@@ -30,6 +30,32 @@ package of that name in your repositories rather than the file you downloaded.
 Intel Macs and 32-bit systems are not built; see [packaging/](./packaging) to
 build from source.
 
+## Install with opam
+
+If you have an opam switch, Sun notes installs into it straight from the
+repository, with no release to download:
+
+```sh
+opam pin git+https://github.com/korkorran/Sun-notes.git
+```
+
+One command: it pins the repository, builds it and installs it. Sun notes is
+not in the opam repository, so opam asks first whether to create it as a new
+package — answer yes. The `git+` prefix is not decoration: without it opam
+takes the URL for an archive to download, and fails on the HTML page GitHub
+sends back.
+
+You then have a `sun-notes` command in the switch, with the page and the icon
+in `share/sun-notes` beside it. `opam pin remove sun-notes` undoes the whole
+thing.
+
+The build needs a C++ toolchain and the native web engine's development files,
+which is what [owebview](https://github.com/korkorran/Owebview) builds against
+— `webkit2gtk-4.1` on Linux, the WebView2 SDK on Windows (`nuget install
+Microsoft.Web.WebView2` before installing), nothing extra on macOS. A
+downloaded installer from the table above needs none of that, and stays the
+easier route for anyone who is not already an OCaml user.
+
 ## Contribute
 
 Clone the repository.

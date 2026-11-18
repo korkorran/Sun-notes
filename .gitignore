@@ -1,3 +1,6 @@
 _opam
 _build
 dist
+
+# dune -p writes this at the root (opam builds with -p)
+*.install
