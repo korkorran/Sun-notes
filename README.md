@@ -56,6 +56,17 @@ Microsoft.Web.WebView2` before installing), nothing extra on macOS. A
 downloaded installer from the table above needs none of that, and stays the
 easier route for anyone who is not already an OCaml user.
 
+If the icon does not show up under Wayland, run
+
+```sh
+sun-notes --install-icon
+```
+
+Wayland has no window icon to set: the shell resolves an application's icon
+from an installed desktop entry instead, and this writes one into
+`~/.local/share/applications`. The command prints the path it wrote, and
+deleting that file is all it takes to undo.
+
 ## Contribute
 
 Clone the repository.
@@ -73,26 +84,6 @@ To run the app :
 dune build
 dune exec run/main.exe
 ```
-
-### The application icon
-
-An installer brings its own icon and the system finds it before the program
-starts, so none of this applies to a Sun notes that came from the `.dmg`, a
-`.deb`, an `.rpm` or the Windows installer. Built from a clone there is no
-package, so the application sets the icon itself from `logo.png` — in the Dock
-on macOS, in the taskbar on Windows and on X11.
-
-Wayland, the default on current GNOME, has no window icon to set: the shell
-resolves an application's icon from an installed desktop entry instead. Write
-one with
-
-```sh
-dune exec run/main.exe -- --install-icon
-```
-
-It goes to `~/.local/share/applications`, the command prints the path, and
-deleting that file is all it takes to undo. Run on a packaged install, the
-option does nothing and says so.
 
 ## License
 
