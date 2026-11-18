@@ -1,10 +1,100 @@
-let () =
+(* ------------------------------------------------------------- the icon
+
+   A Sun notes that came from an installer already has an icon, and nothing
+   below has anything to add: the macOS bundle carries one in
+   Contents/Resources and names it in Info.plist, the .deb and the .rpm
+   install one under hicolor together with a desktop entry, and the Windows
+   installer embeds one in the .exe. The system reads all of those before this
+   program starts.
+
+   Built from a clone of the repository there is no package, and the window
+   wears the generic executable icon. What follows is for that case only: the
+   application id and the icon are set by hand, and --install-icon writes the
+   desktop entry Linux needs. [packaged] below is what tells the two apart. *)
+
+let app_id = "sun-notes"
+
+(* True when the layout around the binary already provides an icon.
+
+   Each test looks for the very file the system reads the icon from, rather
+   than trying to work out how the binary was installed. *)
+let packaged () =
+  let exe = Sys.executable_name in
+  let dir = Filename.dirname exe in
+  (* macOS: the executable sits in "Sun notes.app"/Contents/MacOS, and the
+     Dock takes the icon from Contents/Info.plist (CFBundleIconFile). *)
+  (Filename.basename dir = "MacOS"
+  && Sys.file_exists (Filename.concat (Filename.dirname dir) "Info.plist"))
+  (* Windows: the installer leaves sun-notes.ico beside the .exe for the Start
+     menu and desktop shortcuts to point at, and embeds the same image in the
+     binary. Nothing stages that file in a build tree. *)
+  || Sys.file_exists (Filename.concat dir (app_id ^ ".ico"))
+  (* Linux: the .deb and the .rpm install the binary as
+     /usr/lib/sun-notes/sun-notes, next to a desktop entry whose
+     StartupWMClass is that same "sun-notes" — which is what GTK calls the
+     process, so the shell matches the window to the entry with no help from
+     us. Both halves are tested, because the entry on its own is also there
+     for someone who has the package installed and runs a build tree too: that
+     main.exe matches nothing, and does need the calls below. *)
+  || Filename.basename exe = app_id
+     && Sys.file_exists ("/usr/share/applications/" ^ app_id ^ ".desktop")
+
+(* The icon file, staged beside the binary by run/dune the same way web/ is —
+   so a build tree has it and a package does not, which is exactly right. *)
+let icon_path () =
+  Filename.concat (Webview_desktop.Locate_assets.exe_dir ()) "logo.png"
+
+(* --install-icon: write the desktop entry a Linux desktop needs before it
+   will show the icon at all.
+
+   Under Wayland — the default on current GNOME — there is no window icon
+   property to set: the shell resolves an application's icon from an installed
+   .desktop file, matched against the process by its application id. So
+   setting the icon from the program is not enough there, and an unpackaged
+   build has to install an entry of its own. All the work is
+   owebview.desktop's; what is left here is the labels, which match the ones
+   the .deb and .rpm write, and what to tell the user afterwards. *)
+let install_icon () =
+  if packaged () then (
+    print_endline
+      "Nothing to do: this Sun notes came from an installer, which carries its \
+       own icon and whatever the system needs in order to find it.";
+    exit 0);
+  match
+    Webview_desktop.Icon.install_desktop_entry ~app_id ~icon:(icon_path ())
+      ~name:"Sun notes" ~comment:"A note-taking app written in OCaml"
+      ~categories:[ "Office"; "Utility"; "TextEditor" ] ()
+  with
+  | None ->
+      prerr_endline
+        "--install-icon only applies on Linux: elsewhere the icon is set by \
+         the application itself, which it already does.";
+      exit 1
+  | Some path ->
+      Printf.printf "Installed %s\n" path;
+      print_endline
+        "Start Sun notes again — the icon should now show in the dock, the \
+         taskbar or the window switcher.";
+      Printf.printf "Undo with: rm %s\n" (Filename.quote path)
+
+(* ------------------------------------------------------------- the window *)
+
+let run_window () =
   (* Library version info (no window needed). *)
   let v = Webview.version () in
   (* Through Binding.trace like everything else: a graphical program launched
      from Explorer has no valid standard output, and writing to it would raise
      rather than be ignored. *)
   Binding.trace "using webview %s\n%!" v.Webview.version_number;
+
+  let unpackaged = not (packaged ()) in
+
+  (* Linux only, a no-op elsewhere, and it has to come before [create] so that
+     it applies to the first window realized. This is the id the desktop entry
+     carries as StartupWMClass — whether the one a package installed or the one
+     --install-icon writes — so the two have to agree, and passing the same
+     string to both is what arranges that. *)
+  if unpackaged then Webview_desktop.Icon.set_app_id app_id;
 
   let w = Webview.create ~debug:true () in
   Webview.set_title w "Sun notes";
@@ -31,6 +121,23 @@ let () =
     Filename.concat (Webview_desktop.Locate_assets.assets_dir "web") "index.html"
   in
   Webview.navigate w ("file://" ^ index);
+
+  (* The icon, for the Dock on macOS, the taskbar on Windows and X11.
+     Dispatched rather than called outright: on macOS the process only becomes
+     a Dock-visible application once [run] has started, and an icon set before
+     that is ignored. Under Wayland this has no effect at all — the entry
+     --install-icon writes is what works there.
+
+     Failure to load the image is traced, not raised: this runs on the UI
+     thread, where an escaping exception would take the window down over a
+     cosmetic detail. *)
+  if unpackaged then
+    Webview.dispatch w (fun w ->
+        let icon = icon_path () in
+        if Sys.file_exists icon then
+          try Webview_desktop.Icon.set_app_icon w icon
+          with Failure msg -> Binding.trace "set_app_icon: %s\n%!" msg
+        else Binding.trace "no logo.png beside the binary — run `dune build`\n%!");
 
   (* The two event loops get a thread each, and the assignment is not
      arbitrary: Cocoa requires the UI loop to own the process's main thread, so
@@ -95,3 +202,18 @@ let () =
 
   Webview.run w;
   Webview.destroy w
+
+(* No argument is how the application is always started by a dock, a shortcut
+   or a desktop entry — none of them passes one, which is also why the paths
+   that print below can count on having a console to print to. *)
+let () =
+  match List.tl (Array.to_list Sys.argv) with
+  | [] -> run_window ()
+  | [ "--install-icon" ] -> (
+      try install_icon ()
+      with Failure msg ->
+        prerr_endline msg;
+        exit 1)
+  | _ ->
+      prerr_endline "usage: sun-notes [--install-icon]";
+      exit 2

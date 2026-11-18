@@ -57,11 +57,26 @@
  (action
   (write-file link_flags.sexp "()")))
 
-; Stage the web/ assets next to the built binary (_build/.../examples/web/) so
-; the example is self-contained in the build tree — without installing them
-; into the opam switch. The binary reads them from there, or from the source
-; tree when run via `dune exec`; see Webview.Utils.web_dir.
+; Stage the web/ assets next to the built binary (_build/default/run/web/) so
+; the application is self-contained in the build tree — without installing them
+; into the opam switch. The binary reads them from there; see
+; Webview_desktop.Locate_assets.assets_dir.
+;
+; logo.png is staged beside it for the same reason: main.ml reads the icon from
+; there with Locate_assets.exe_dir, and a build tree has no other copy of it to
+; read. Staged, and deliberately not installed — the three packaging scripts
+; copy main.exe and web/ by name and build their own icons from the logo.png at
+; the repository root, so this copy never reaches a package. That is what lets
+; main.ml treat the absence of an installer's own icon as the sign of a build
+; tree.
 (alias
  (name all)
  (deps
-  (glob_files web/*)))
+  (glob_files web/*)
+  logo.png))
+
+(rule
+ (target logo.png)
+ (deps ../logo.png)
+ (action
+  (copy ../logo.png logo.png)))
